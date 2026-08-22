@@ -23,10 +23,6 @@ A sleek, modern, and high-performance desktop music player built with Python. No
 - **Mutagen** - ID3 Tag metadata extraction
 - **Pillow** - Image processing for branding
 
-## 📸 Preview
-*(Replace this with a screenshot or a GIF of your app once you upload it!)*
-> "A sleek interface designed for a premium experience."
-
 ## 🛠 Installation
 
 ### Prerequisites
