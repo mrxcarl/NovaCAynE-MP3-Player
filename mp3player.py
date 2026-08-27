@@ -7,9 +7,8 @@ import customtkinter as ctk
 from tkinter import filedialog
 from mutagen.mp3 import MP3
 from mutagen.mp3 import EasyMP3
-from PIL import Image, ImageTk
-
-# Included as many comments as I could think of to explain things
+from PIL import Image
+import pypresence
 
 # --- PyInstaller Path Handling ---
 def resource_path(relative_path):
@@ -28,19 +27,29 @@ ctk.set_default_color_theme("blue")
 class MusicPlayer(ctk.CTk):
     def __init__(self):
         super().__init__()
-
         # --- Configuration ---
         self.title("NovaCAynE Player By: JethroTeK")
         self.geometry("1100x750")
 
-        # Setup Window Icon (requires icon.ico in the folder)
+        # Setup Window Icon
         try:
             self.iconbitmap(resource_path("icon.ico"))
-        except:
-            pass # Ignore if .ico is missing during development
-
+        except Exception:
+            pass
+        
         # Initialize Pygame Mixer
         pygame.mixer.init()
+
+        # --- Discord Rich Presence Setup ---
+        self.client_id = "1542393465311338606" 
+        self.rpc = None
+        try:
+            self.rpc = pypresence.Presence(self.client_id)
+            self.rpc.connect()
+            print("Discord RPC initialized successfully.")
+        except Exception as e:
+            print(f"Discord RPC failed to initialize: {e}")
+            self.rpc = None
 
         # State Variables
         self.playlist = []
@@ -65,37 +74,35 @@ class MusicPlayer(ctk.CTk):
         self.logo_img = None
         try:
             img_path = resource_path("logo.png")
-            img = Image.open(img_path)
-            # Optional: force resize to your specific dimensions
-            # img = img.resize((352, 192)) 
-            self.logo_img = ImageTk.PhotoImage(img)
+            self.logo_img = ctk.CTkImage(light_image=Image.open(img_path),
+                                         dark_image=Image.open(img_path),
+                                         size=(150, 150))
         except Exception as e:
             print(f"Notice: Logo image not found or failed to load: {e}")
 
-        # Logo Display (Place your logo here)
         if self.logo_img:
             self.logo_label = ctk.CTkLabel(self.playlist_frame, image=self.logo_img, text="")
             self.logo_label.pack(pady=(20, 10))
-        
+
         self.label_list = ctk.CTkLabel(
-            self.playlist_frame, 
-            text="LIBRARY", 
-            font=("Arial", 28, "bold"), 
+            self.playlist_frame,
+            text="LIBRARY",
+            font=("Arial", 28, "bold"),
             text_color="#3b82f6"
         )
         self.label_list.pack(pady=(0, 20), padx=20)
 
         self.scrollable_frame = ctk.CTkScrollableFrame(
-            self.playlist_frame, 
-            width=320, 
+            self.playlist_frame,
+            width=320,
             fg_color="#242424"
         )
         self.scrollable_frame.pack(padx=10, pady=10, fill="both", expand=True)
 
         # Sidebar Action Buttons
         self.btn_add_files = ctk.CTkButton(
-            self.playlist_frame, 
-            text="Add Individual Songs", 
+            self.playlist_frame,
+            text="Add Individual Songs",
             fg_color="#3b82f6",
             hover_color="#2563eb",
             font=("Arial", 13, "bold"),
@@ -104,8 +111,8 @@ class MusicPlayer(ctk.CTk):
         self.btn_add_files.pack(side="bottom", pady=(0, 5), padx=20)
 
         self.btn_add_folder = ctk.CTkButton(
-            self.playlist_frame, 
-            text="Add Music Folder", 
+            self.playlist_frame,
+            text="Add Music Folder",
             fg_color="#3b82f6",
             hover_color="#2563eb",
             font=("Arial", 13, "bold"),
@@ -114,8 +121,8 @@ class MusicPlayer(ctk.CTk):
         self.btn_add_folder.pack(side="bottom", pady=(0, 5), padx=20)
 
         self.btn_remove_current = ctk.CTkButton(
-            self.playlist_frame, 
-            text="Remove Selected", 
+            self.playlist_frame,
+            text="Remove Selected",
             fg_color="#eab308",
             hover_color="#ca8a04",
             font=("Arial", 13, "bold"),
@@ -124,8 +131,8 @@ class MusicPlayer(ctk.CTk):
         self.btn_remove_current.pack(side="bottom", pady=(0, 5), padx=20)
 
         self.btn_clear_all = ctk.CTkButton(
-            self.playlist_frame, 
-            text="Clear All", 
+            self.playlist_frame,
+            text="Clear All",
             fg_color="#dc3545",
             hover_color="#bc2030",
             font=("Arial", 13, "bold"),
@@ -138,16 +145,16 @@ class MusicPlayer(ctk.CTk):
         self.player_frame.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
 
         self.track_label = ctk.CTkLabel(
-            self.player_frame, 
-            text="No Track Selected", 
+            self.player_frame,
+            text="No Track Selected",
             font=("Arial", 36, "bold")
         )
         self.track_label.pack(pady=(80, 10))
 
         self.artist_label = ctk.CTkLabel(
-            self.player_frame, 
-            text="Select a song to start", 
-            font=("Arial", 18), 
+            self.player_frame,
+            text="Select a song to start",
+            font=("Arial", 18),
             text_color="gray"
         )
         self.artist_label.pack(pady=(0, 40))
@@ -162,21 +169,21 @@ class MusicPlayer(ctk.CTk):
         self.controls_frame.pack(pady=30)
 
         self.btn_prev = ctk.CTkButton(
-            self.controls_frame, text="⏮", width=60, height=60, 
+            self.controls_frame, text="⏮", width=60, height=60,
             font=("Arial", 30), fg_color="#2d2d2d", hover_color="#3d3d3d",
             command=self.prev_track
         )
         self.btn_prev.grid(row=0, column=0, padx=10)
 
         self.btn_play = ctk.CTkButton(
-            self.controls_frame, text="▶", width=100, height=60, 
+            self.controls_frame, text="▶", width=100, height=60,
             font=("Arial", 30, "bold"), fg_color="#3b82f6",
             command=self.toggle_play
         )
         self.btn_play.grid(row=0, column=1, padx=10)
 
         self.btn_next = ctk.CTkButton(
-            self.controls_frame, text="⏭", width=60, height=60, 
+            self.controls_frame, text="⏭", width=60, height=60,
             font=("Arial", 30), fg_color="#2d2d2d", hover_color="#3d3d3d",
             command=self.next_track
         )
@@ -188,6 +195,34 @@ class MusicPlayer(ctk.CTk):
         self.volume_slider.pack(pady=20)
 
     # --- Core Engine Logic ---
+    def update_track_info(self):
+        track_title = "No Track Selected"
+        artist_name = "Unknown Artist"
+
+        if self.current_track_index != -1:
+            path = self.playlist[self.current_track_index]
+            try:
+                audio = EasyMP3(path)
+                track_title = audio.get('title', [os.path.basename(path)])[0]
+                artist_name = audio.get('artist', ['Unknown Artist'])[0]
+            except Exception:
+                track_title = os.path.basename(path)
+
+        self.track_label.configure(text=track_title[:40])
+        self.artist_label.configure(text=f"{artist_name} | {track_title}")
+
+        # Discord Rich Presence Update
+        if self.rpc:
+            try:
+                self.rpc.update(
+                    state=f"By: {artist_name}"[:128],
+                    details=f"Listening to {track_title}"[:128],
+                    large_image="playing",
+                    large_text="NovaCAynE Player"
+                )
+            except Exception as e:
+                print(f"Discord Update Failed: {e}")
+
     def add_files(self):
         files = filedialog.askopenfilenames(title="Select MP3 Files", filetypes=[("MP3 Files", "*.mp3")])
         if files:
@@ -196,13 +231,13 @@ class MusicPlayer(ctk.CTk):
     def add_folder(self):
         path = filedialog.askdirectory(title="Select Music Folder")
         if path:
-            files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".mp3")]
+            files = [os.path.join(path, f) for f in os.listdir(path) if f.lower().endswith(".mp3")]
             if files:
                 self.update_playlist(files)
 
     def update_playlist(self, new_files):
         self.playlist.extend(new_files)
-        self.playlist = list(set(self.playlist))  # Remove duplicates
+        self.playlist = list(set(self.playlist))
         self.populate_playlist_ui()
         if not self.is_playing and self.current_track_index == -1:
             self.current_track_index = 0
@@ -219,20 +254,6 @@ class MusicPlayer(ctk.CTk):
                 hover_color="#333333", command=lambda i=i: self.select_track(i)
             )
             btn.pack(fill="x", pady=2)
-
-    def update_track_info(self):
-        if self.current_track_index != -1:
-            path = self.playlist[self.current_track_index]
-            try:
-                audio = EasyMP3(path)
-                title = audio.get('title', [os.path.basename(path)])[0]
-                artist = audio.get('artist', ['Unknown Artist'])[0]
-                self.track_label.configure(text=title[:40])
-                self.artist_label.configure(text=f"{artist} | {title}")
-            except:
-                filename = os.path.basename(path)
-                self.track_label.configure(text=filename[:40])
-                self.artist_label.configure(text="Unknown Artist")
 
     def select_track(self, index):
         self.current_track_index = index
@@ -315,13 +336,24 @@ class MusicPlayer(ctk.CTk):
                         self.progress_bar.set(min(progress, 1.0))
                     if not pygame.mixer.music.get_busy() or current_pos >= duration:
                         self.next_track()
-                except:
+                except Exception:
                     pass
             else:
                 self.progress_bar.set(0)
 
 if __name__ == "__main__":
     app = MusicPlayer()
+
+    # --- AUTO-LOAD LOGIC ---
+    if len(sys.argv) > 1:
+        file_arg = sys.argv[1]
+        if file_arg.lower().endswith(".mp3"):
+            app.playlist = [file_arg]
+            app.current_track_index = 0
+            app.update_track_info()
+            app.populate_playlist_ui()
+            app.play_music()
+
     app.btn_add_files.configure(command=app.add_files)
     app.btn_add_folder.configure(command=app.add_folder)
     app.btn_remove_current.configure(command=app.remove_current)
