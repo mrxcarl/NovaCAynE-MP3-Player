@@ -4,11 +4,12 @@ import threading
 import time
 import pygame
 import customtkinter as ctk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from mutagen.mp3 import MP3
 from mutagen.mp3 import EasyMP3
 from PIL import Image
 import pypresence
+import yt_dlp
 
 def resource_path(relative_path):
     try:
@@ -29,7 +30,7 @@ class MusicPlayer(ctk.CTk):
             self.iconbitmap(resource_path("icon.ico"))
         except Exception:
             pass
-
+        
         pygame.mixer.init()
         self.client_id = "1542393465311338606"
         self.rpc = None
@@ -40,17 +41,22 @@ class MusicPlayer(ctk.CTk):
         except Exception as e:
             print(f"Discord RPC failed to initialize: {e}")
             self.rpc = None
+
         self.playlist = []
         self.current_track_index = -1
         self.is_playing = False
         self.volume = 0.7
         pygame.mixer.music.set_volume(self.volume)
+
         self.update_thread = threading.Thread(target=self.update_engine, daemon=True)
         self.update_thread.start()
+
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
+
         self.playlist_frame = ctk.CTkFrame(self, width=350, fg_color="#1a1a1a")
         self.playlist_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+
         self.logo_img = None
         try:
             img_path = resource_path("logo.png")
@@ -59,9 +65,11 @@ class MusicPlayer(ctk.CTk):
                                          size=(150, 150))
         except Exception as e:
             print(f"Notice: Logo image not found or failed to load: {e}")
+
         if self.logo_img:
             self.logo_label = ctk.CTkLabel(self.playlist_frame, image=self.logo_img, text="")
             self.logo_label.pack(pady=(20, 10))
+
         self.label_list = ctk.CTkLabel(
             self.playlist_frame,
             text="LIBRARY",
@@ -69,12 +77,15 @@ class MusicPlayer(ctk.CTk):
             text_color="#3b82f6"
         )
         self.label_list.pack(pady=(0, 20), padx=20)
+
         self.scrollable_frame = ctk.CTkScrollableFrame(
             self.playlist_frame,
             width=320,
             fg_color="#242424"
         )
         self.scrollable_frame.pack(padx=10, pady=10, fill="both", expand=True)
+
+        # Buttons Section
         self.btn_add_files = ctk.CTkButton(
             self.playlist_frame,
             text="Add Individual Songs",
@@ -84,6 +95,7 @@ class MusicPlayer(ctk.CTk):
             height=35
         )
         self.btn_add_files.pack(side="bottom", pady=(0, 5), padx=20)
+
         self.btn_add_folder = ctk.CTkButton(
             self.playlist_frame,
             text="Add Music Folder",
@@ -93,6 +105,17 @@ class MusicPlayer(ctk.CTk):
             height=35
         )
         self.btn_add_folder.pack(side="bottom", pady=(0, 5), padx=20)
+
+        self.btn_add_yt = ctk.CTkButton(
+            self.playlist_frame,
+            text="Add from YouTube",
+            fg_color="#9333ea",
+            hover_color="#7e22ce",
+            font=("Arial", 13, "bold"),
+            height=35
+        )
+        self.btn_add_yt.pack(side="bottom", pady=(0, 5), padx=20)
+
         self.btn_remove_current = ctk.CTkButton(
             self.playlist_frame,
             text="Remove Selected",
@@ -102,6 +125,7 @@ class MusicPlayer(ctk.CTk):
             height=35
         )
         self.btn_remove_current.pack(side="bottom", pady=(0, 5), padx=20)
+
         self.btn_clear_all = ctk.CTkButton(
             self.playlist_frame,
             text="Clear All",
@@ -111,14 +135,17 @@ class MusicPlayer(ctk.CTk):
             height=35
         )
         self.btn_clear_all.pack(side="bottom", pady=(0, 10), padx=20)
+
         self.player_frame = ctk.CTkFrame(self, fg_color="#121212")
         self.player_frame.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
+
         self.track_label = ctk.CTkLabel(
             self.player_frame,
             text="No Track Selected",
             font=("Arial", 36, "bold")
         )
         self.track_label.pack(pady=(80, 10))
+
         self.artist_label = ctk.CTkLabel(
             self.player_frame,
             text="Select a song to start",
@@ -126,32 +153,89 @@ class MusicPlayer(ctk.CTk):
             text_color="gray"
         )
         self.artist_label.pack(pady=(0, 40))
+
         self.progress_bar = ctk.CTkProgressBar(self.player_frame, width=500, progress_color="#3b82f6")
         self.progress_bar.set(0)
         self.progress_bar.pack(pady=10)
+
         self.controls_frame = ctk.CTkFrame(self.player_frame, fg_color="transparent")
         self.controls_frame.pack(pady=30)
+
         self.btn_prev = ctk.CTkButton(
             self.controls_frame, text="⏮", width=60, height=60,
             font=("Arial", 30), fg_color="#2d2d2d", hover_color="#3d3d3d",
             command=self.prev_track
         )
         self.btn_prev.grid(row=0, column=0, padx=10)
+
         self.btn_play = ctk.CTkButton(
             self.controls_frame, text="▶", width=100, height=60,
             font=("Arial", 30, "bold"), fg_color="#3b82f6",
             command=self.toggle_play
         )
         self.btn_play.grid(row=0, column=1, padx=10)
+
         self.btn_next = ctk.CTkButton(
             self.controls_frame, text="⏭", width=60, height=60,
             font=("Arial", 30), fg_color="#2d2d2d", hover_color="#3d3d3d",
             command=self.next_track
         )
         self.btn_next.grid(row=0, column=2, padx=10)
+
         self.volume_slider = ctk.CTkSlider(self.player_frame, from_=0, to=1, width=400, command=self.set_volume)
         self.volume_slider.set(self.volume)
         self.volume_slider.pack(pady=20)
+
+    def download_yt(self, url):
+        """Downloads audio from a YouTube URL using yt-dlp with anti-403 headers."""
+        ydl_opts = {
+            'format': 'bestaudio', 
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            }
+        }
+        try:
+            if not os.path.exists("downloads"):
+                os.makedirs("downloads")
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(url, download=True)
+                raw_path = ydl.prepare_filename(info_dict)
+                
+                if not raw_path.lower().endswith(".mp3"):
+                    final_path = os.path.splitext(raw_path)[0] + ".mp3"
+                else:
+                    final_path = raw_path
+                
+                return final_path
+        except Exception as e:
+            print(f"YT Download Error: {e}")
+            return None
+
+    def add_yt_url(self):
+        from tkinter import simpledialog
+        url = simpledialog.askstring("Input", "Paste YouTube URL:")
+        if url:
+            def thread_task():
+                path = self.download_yt(url)
+                if path:
+                    self.update_playlist([path])
+                else:
+                    messagebox.showerror("Error", "Failed to download video.")
+            
+            threading.Thread(target=thread_task, daemon=True).start()
 
     def update_track_info(self):
         track_title = "No Track Selected"
@@ -297,6 +381,8 @@ class MusicPlayer(ctk.CTk):
 
 if __name__ == "__main__":
     app = MusicPlayer()
+    app.btn_add_yt.configure(command=app.add_yt_url)
+    
     if len(sys.argv) > 1:
         file_arg = sys.argv[1]
         if file_arg.lower().endswith(".mp3"):
@@ -305,6 +391,7 @@ if __name__ == "__main__":
             app.update_track_info()
             app.populate_playlist_ui()
             app.play_music()
+    
     app.btn_add_files.configure(command=app.add_files)
     app.btn_add_folder.configure(command=app.add_folder)
     app.btn_remove_current.configure(command=app.remove_current)
