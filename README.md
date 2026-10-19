@@ -40,7 +40,7 @@ To run this application, you will need:
    ```
 3. **Run the application:**
    ```bash
-   python main.py
+   python mp3player.py
    ```
 
 ## 📜 Changelog
