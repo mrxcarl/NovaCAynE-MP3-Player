@@ -1,4 +1,6 @@
 customtkinter==6.0.0
 mutagen==1.47.0
-Pillow==12.3.0
+Pillow==13.0.0
 pygame==2.6.1
+pypresence==4.6.2
+yt_dlp==2026.8.19
